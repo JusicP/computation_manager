@@ -1,0 +1,317 @@
+﻿#include "computation_manager.h"
+#include "shared.h"
+
+#include <cstdio>
+#include <time.h> 
+#ifdef WIN32
+#include <Windows.h>
+#endif
+
+TaskList* g_pTasks;
+bool g_bRunning; // is the server running
+bool g_bInitialized; // is the server initialized
+SOCKET g_SockFd;
+
+#define MAX_CONNECTIONS 128
+SOCKET g_ClientSockets[MAX_CONNECTIONS];
+
+void CM_Init()
+{
+	g_pTasks = NULL;
+    g_bRunning = false;
+    g_bInitialized = false;
+
+    for (int i = 0; i < MAX_CONNECTIONS; i++)
+    {
+        g_ClientSockets[i] = INVALID_SOCKET;
+    }
+}
+
+void CM_Shutdown()
+{
+	CleanUpTaskList(g_pTasks);
+}
+
+Task* CM_NewTask(int x, int limit, char compSymbol)
+{
+	return NewTask(g_pTasks, x, TASK_STATUS_READY_TO_RUN, limit, compSymbol);
+}
+
+void CM_StartProcess(Task* task)
+{
+    char cmdLine[128];
+    snprintf(cmdLine, sizeof(cmdLine), "%s %s", ::GetCommandLine(), "worker");
+
+	// create child process
+    // possible problem: SIGINT sent to parent process, is also sent to child, causing it to terminate
+#ifdef WIN32
+	BOOL bSuccess = FALSE;
+	PROCESS_INFORMATION piProcInfo;
+	STARTUPINFO siStartInfo;
+
+	ZeroMemory(&piProcInfo, sizeof(PROCESS_INFORMATION));
+	ZeroMemory(&siStartInfo, sizeof(STARTUPINFO));
+	siStartInfo.cb = sizeof(STARTUPINFO);
+
+	bSuccess = CreateProcess(NULL,
+        cmdLine,       // command line 
+		NULL,          // process security attributes 
+		NULL,          // primary thread security attributes 
+		TRUE,          // handles are inherited 
+		0,             // creation flags 
+		NULL,          // use parent's environment 
+		NULL,          // use parent's current directory 
+		&siStartInfo,  // STARTUPINFO pointer 
+		&piProcInfo);  // receives PROCESS_INFORMATION 
+
+	if (!bSuccess)
+	{
+		printf("CreateProcess failed with code: %d\n", GetLastError());
+		ASSERT(false)
+	}
+	else
+	{
+		CloseHandle(piProcInfo.hProcess);
+		CloseHandle(piProcInfo.hThread);
+	}
+#else
+#error
+#endif
+}
+
+void CM_CloseSocket(Task* task)
+{
+    closesocket(task->sockFd);
+    task->sockFd = INVALID_SOCKET;
+}
+
+void CM_InitServer()
+{
+    WSADATA wsaData;
+    int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    if (iResult != 0)
+    {
+        printf("WSAStartup failed: %d\n", iResult);
+        return;
+    }
+
+    g_SockFd = socket(AF_INET, SOCK_STREAM, 0);
+    ASSERT(g_SockFd != -1);
+
+    sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(MGR_PORT);
+    addr.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(g_SockFd, (sockaddr*)&addr, sizeof(sockaddr)) == -1)
+    {
+        perror("bind");
+        exit(1);
+    }
+
+    if (listen(g_SockFd, SOMAXCONN) == -1)
+    {
+        perror("listen");
+        exit(1);
+    }
+
+    // change the socket into non-blocking state
+    u_long iMode = 1;
+    if (ioctlsocket(g_SockFd, FIONBIO, &iMode) == -1)
+    {
+        perror("ioctlsocket");
+        exit(1);
+    }
+}
+
+// The sequence of send messages mgr <-> worker
+// [Worker] Send hello message
+// [Mgr] Send task to the worker if there is one (task)
+// [Worker] Send task result (or send nothing on error) and disconnect
+void CM_RunServer()
+{
+    if (!g_bInitialized)
+    {
+        CM_InitServer();
+        g_bInitialized = true;
+    }
+
+    SOCKET newFd = accept(g_SockFd, NULL, NULL);
+    int error = WSAGetLastError();
+    if (newFd >= 0)
+    {
+        // set non-blocking for new socket
+        u_long iMode = 1;
+        ioctlsocket(newFd, FIONBIO, &iMode);
+
+        // add the new client socket to the array
+        bool added = false;
+        for (int i = 0; i < MAX_CONNECTIONS; i++)
+        {
+            if (g_ClientSockets[i] == INVALID_SOCKET)
+            {
+                g_ClientSockets[i] = newFd;
+                added = true;
+                break;
+            }
+        }
+        if (!added)
+        {
+            printf("Max clients reached, closing connection.\n");
+            closesocket(newFd);
+        }
+    }
+    else if (error != WSAEWOULDBLOCK)
+    {
+        perror("accept");
+        exit(1);
+    }
+
+    for (int i = 0; i <= MAX_CONNECTIONS; i++)
+    {
+        if (g_ClientSockets[i] == INVALID_SOCKET)
+        {
+            continue;
+        }
+
+        SOCKET socket = g_ClientSockets[i];
+        char buf[128];
+        int n = recv(socket, buf, sizeof(buf), 0);
+        if (n > 0) // got message
+        {
+            // if no task by socket, then we got probably inital hello message
+            Task* task = GetTaskBySocket(g_pTasks, socket);
+            if (!task)
+            {
+                // read hello msg and find free task, assign socket to task
+                if (strcmp(buf, "HELLO"))
+                {
+                    printf("Unknown message\n");
+                    continue;
+                }
+
+                task = FindFreeTask(g_pTasks);
+                ASSERT(task); // could be zero if run the program manually with the worker argument
+                task->sockFd = socket;
+
+                // send task message
+                TaskMsg msg;
+                msg.x = task->x;
+                msg.componentSymbol = task->componentSymbol;
+                if (send(socket, (const char*)&msg, sizeof(msg), 0) == -1)
+                {
+                    perror("send");
+                    CM_CloseSocket(task);
+                    g_ClientSockets[i] = INVALID_SOCKET;
+                    task->status = TASK_STATUS_ERROR;
+                    continue;
+                }
+
+                task->status = TASK_STATUS_CALCULATING;
+
+                continue;
+            }
+
+            // read calculation results
+            task->result = *(double*)buf;
+            task->status = TASK_STATUS_FINISHED;
+        }
+        else if (n == 0 || WSAGetLastError() != WSAEWOULDBLOCK) // client disconnected or we got socket error
+        {
+            Task* task = GetTaskBySocket(g_pTasks, socket);
+            if (task)
+            {
+                CM_CloseSocket(task);
+
+                if (task->status == TASK_STATUS_CALCULATING || task->status == TASK_STATUS_WAITING_FOR_HELLO_MSG)
+                {
+                    // set error status for worker from which a message is expected
+                    task->status = TASK_STATUS_ERROR;
+                }
+            }
+            else
+            {
+                closesocket(socket);
+            }
+
+            g_ClientSockets[i] = INVALID_SOCKET;
+        }
+	}
+}
+
+void CM_Run()
+{
+    // TODO: finish
+    TaskList* list = g_pTasks;
+
+    // process task status
+    while (list != NULL)
+    {
+        Task* task = list->pTask;
+        ASSERT(task);
+
+        if (task->status == TASK_STATUS_READY_TO_RUN)
+        {
+            CM_StartProcess(task);
+            task->status = TASK_STATUS_WAITING_FOR_HELLO_MSG;
+        }
+        else if (task->status == TASK_STATUS_CALCULATING)
+        {
+            // update task time counter
+            if (task->elapsedTime == 0)
+            {
+                task->elapsedTime = 0; // TODO: ....
+            }
+
+            if (task->limit > 0 && task->limit <= task->elapsedTime)
+            {
+                task->status = TASK_STATUS_LIMIT_EXCEEDED;
+
+                // don't receive message from this worker because he's late
+                CM_CloseSocket(task);
+            }
+        }
+
+        list = list->pNext;
+    }
+
+    CM_RunServer();
+}
+
+void CM_Cancel(int groupIdx, int componentIdx)
+{
+    // TODO: groupIdx
+
+    TaskList* list = g_pTasks;
+    while (list != NULL)
+    {
+        Task* task = list->pTask;
+        ASSERT(task);
+
+        // set canceled status for running task
+        if ((componentIdx == -1 || task->idx == componentIdx) &&
+            task->status == TASK_STATUS_CALCULATING &&
+            task->status == TASK_STATUS_WAITING_FOR_HELLO_MSG)
+        {
+            CM_CloseSocket(task);
+            task->status = TASK_STATUS_CANCELED_BY_USER;
+        }
+
+        list = list->pNext;
+    }
+}
+
+void CM_SetRunning(bool running)
+{
+    g_bRunning = running;
+}
+
+bool CM_IsRunning()
+{
+	return g_bRunning;
+}
+
+TaskList* CM_GetTasks()
+{
+	return g_pTasks;
+}
