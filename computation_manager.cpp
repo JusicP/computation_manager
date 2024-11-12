@@ -239,9 +239,35 @@ void CM_RunServer()
 	}
 }
 
+bool CM_ShouldRun()
+{
+    // CM should run when some task is ready to run or calculation component is active (calculating)
+    TaskList* list = g_pTasks;
+    while (list != NULL)
+    {
+        Task* task = list->pTask;
+        ASSERT(task);
+        if (task->status == TASK_STATUS_READY_TO_RUN ||
+            task->status == TASK_STATUS_WAITING_FOR_HELLO_MSG ||
+            task->status == TASK_STATUS_CALCULATING)
+        {
+            return true;
+        }
+
+        list = list->pNext;
+    }
+
+    return false;
+}
+
 void CM_Run()
 {
-    // TODO: finish
+    if (!CM_ShouldRun())
+    {
+        CM_SetRunning(false);
+        return;
+    }
+
     TaskList* list = g_pTasks;
 
     // process task status
