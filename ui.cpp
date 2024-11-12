@@ -83,6 +83,16 @@ void UI_NewGroup(int argc, char** argv)
 
 void UI_RunComputating()
 {
+	// set ready to run status for all tasks
+	TaskList* list = CM_GetTasks();
+	while (list != NULL)
+	{
+		Task* task = list->pTask;
+		task->status = TASK_STATUS_READY_TO_RUN;
+
+		list = list->pNext;
+	}
+
 	CM_SetRunning(true);
 }
 
