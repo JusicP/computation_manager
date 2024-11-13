@@ -35,6 +35,8 @@ Group* NewGroup(GroupList*& list, int x, double limit)
 	pGroup->x = x;
 	pGroup->limit = limit;
 	pGroup->taskList = NULL;
+	pGroup->startTime = 0;
+	pGroup->elapsedTime = 0;
 
 	PushGroup(list, pGroup);
 

@@ -6,6 +6,9 @@ struct Group
 	int x; // function argument
 	double limit;
 	struct TaskList* taskList;
+
+	double startTime;
+	double elapsedTime;
 };
 
 struct GroupList

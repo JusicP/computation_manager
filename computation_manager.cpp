@@ -322,6 +322,8 @@ void CM_Run()
         Group* group = list->group;
         ASSERT(group);
 
+        bool someTaskAreRunning = false;
+
         TaskList* taskList = group->taskList;
         while (taskList != NULL)
         {
@@ -352,9 +354,41 @@ void CM_Run()
 
                     //printf("Task %d cancelled: time limit exceeded\n", task->idx);
                 }
+                else
+                {
+                    someTaskAreRunning = true;
+                }
+            }
+            taskList = taskList->pNext;
+        }
+
+        // update group time counter
+        if (someTaskAreRunning)
+        {
+            if (group->startTime == 0)
+            {
+                group->startTime = clock();
             }
 
-            taskList = taskList->pNext;
+            group->elapsedTime = (double)(clock() - group->startTime) / CLOCKS_PER_SEC;
+
+            if (group->limit > 0 && group->limit <= group->elapsedTime)
+            {
+                // finish all tasks
+                TaskList* taskList = group->taskList;
+                while (taskList != NULL)
+                {
+                    Task* task = taskList->pTask;
+                    ASSERT(task);
+
+                    if (task->status == TASK_STATUS_CALCULATING)
+                    {
+                        task->status = TASK_STATUS_LIMIT_EXCEEDED;
+                        CM_CloseSocket(task);
+                    }
+                    taskList = taskList->pNext;
+                }
+            }
         }
 
         list = list->pNext;

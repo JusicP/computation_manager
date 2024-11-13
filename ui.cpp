@@ -105,6 +105,7 @@ void UI_RunComputating()
 	while (list != NULL)
 	{
 		Group* group = list->group;
+		group->startTime = 0;
 
 		TaskList* taskList = group->taskList;
 		while (taskList != NULL)
