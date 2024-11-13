@@ -4,7 +4,7 @@ struct Group
 {
 	int idx;
 	int x; // function argument
-	int limit;
+	double limit;
 	struct TaskList* taskList;
 };
 
@@ -16,7 +16,7 @@ struct GroupList
 
 struct Task;
 
-Group* NewGroup(GroupList*& list, int x, int limit);
+Group* NewGroup(GroupList*& list, int x, double limit);
 void CleanUpGroupList(GroupList* list);
 Group* GetGroupByIdx(GroupList* list, int idx);
 Task* GetTaskBySocket(GroupList* list, int sockFd);

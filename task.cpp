@@ -28,7 +28,7 @@ void PushTask(TaskList*& list, Task* task)
 	current->pNext = NewNode(task);
 }
 
-Task* NewTask(TaskList*& list, int status, int limit, char compSymbol)
+Task* NewTask(TaskList*& list, int status, double limit, char compSymbol)
 {
 	Task* pTask = new Task;
 	pTask->status = status;
@@ -36,6 +36,7 @@ Task* NewTask(TaskList*& list, int status, int limit, char compSymbol)
 	pTask->idx = g_nTaskIdCounter++;
 	pTask->componentSymbol = compSymbol;
 	pTask->elapsedTime = 0;
+	pTask->startTime = 0;
 
 	PushTask(list, pTask);
 

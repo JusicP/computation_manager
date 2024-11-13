@@ -28,7 +28,7 @@ void PushGroup(GroupList*& list, Group* group)
 	current->pNext = NewNode(group);
 }
 
-Group* NewGroup(GroupList*& list, int x, int limit)
+Group* NewGroup(GroupList*& list, int x, double limit)
 {
 	Group* pGroup = new Group;
 	pGroup->idx = g_nGroupIdCounter++;

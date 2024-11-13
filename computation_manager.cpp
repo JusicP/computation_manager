@@ -33,7 +33,7 @@ void CM_Shutdown()
     CleanUpGroupList(g_pGroups);
 }
 
-Task* CM_NewTask(int groupIdx, int limit, char compSymbol)
+Task* CM_NewTask(int groupIdx, double limit, char compSymbol)
 {
     // find group and add to task list
     Group* group = GetGroupByIdx(g_pGroups, groupIdx);
@@ -45,7 +45,7 @@ Task* CM_NewTask(int groupIdx, int limit, char compSymbol)
 	return NewTask(group->taskList, TASK_STATUS_READY_TO_RUN, limit, compSymbol);
 }
 
-Group* CM_NewGroup(int x, int limit)
+Group* CM_NewGroup(int x, double limit)
 {
     return NewGroup(g_pGroups, x, limit);
 }
@@ -336,10 +336,12 @@ void CM_Run()
             else if (task->status == TASK_STATUS_CALCULATING)
             {
                 // update task time counter
-                if (task->elapsedTime == 0)
+                if (task->startTime == 0)
                 {
-                    task->elapsedTime = 0; // TODO: ....
+                    task->startTime = clock();
                 }
+
+                task->elapsedTime = (double)(clock() - task->startTime) / CLOCKS_PER_SEC;
 
                 if (task->limit > 0 && task->limit <= task->elapsedTime)
                 {

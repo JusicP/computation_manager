@@ -58,10 +58,10 @@ void UI_NewComputation(int argc, char** argv)
 		return;
 	}
 	
-	int limit = 0;
+	double limit = 0;
 	if (argc > 3)
 	{
-		limit = atoi(argv[3]);
+		limit = atof(argv[3]);
 	}
 
 	Task* task = CM_NewTask(groupIdx, limit, compSymbol);
@@ -87,10 +87,10 @@ void UI_NewGroup(int argc, char** argv)
 		return;
 	}
 
-	int limit = 0;
+	double limit = 0;
 	if (argc > 2)
 	{
-		limit = atoi(argv[2]);
+		limit = atof(argv[2]);
 	}
 
 	Group* group = CM_NewGroup(x, limit);
@@ -134,7 +134,7 @@ void UI_Summary()
 		while (taskList != NULL)
 		{
 			Task* task = taskList->pTask;
-			printf("[Task %d] result: %f, elapsed time: %d, status: %s\n", task->idx, task->result, task->elapsedTime, StatusToString(task->status));
+			printf("[Task %d] result: %f, elapsed time: %f, status: %s\n", task->idx, task->result, task->elapsedTime, StatusToString(task->status));
 
 			taskList = taskList->pNext;
 		}
@@ -163,7 +163,7 @@ void UI_Status()
 			else
 				printf("result: not defined, ");
 
-			printf("elapsed time: %d, status: %s\n", task->elapsedTime, StatusToString(task->status));
+			printf("elapsed time: %f, status: %s\n", task->elapsedTime, StatusToString(task->status));
 
 			taskList = taskList->pNext;
 		}
