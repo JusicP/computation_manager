@@ -123,28 +123,6 @@ void UI_RunComputating()
 	CM_SetRunning(true);
 }
 
-void UI_Summary()
-{
-	printf("Summary:\n");
-
-	GroupList* list = CM_GetGroups();
-	while (list != NULL)
-	{
-		Group* group = list->group;
-
-		TaskList* taskList = group->taskList;
-		while (taskList != NULL)
-		{
-			Task* task = taskList->pTask;
-			printf("[Task %d] result: %f, elapsed time: %f, status: %s\n", task->idx, task->result, task->elapsedTime, StatusToString(task->status));
-
-			taskList = taskList->pNext;
-		}
-
-		list = list->pNext;
-	}
-}
-
 void UI_Status()
 {
 	printf("Computation status for each task:\n");
@@ -154,12 +132,14 @@ void UI_Status()
 	{
 		Group* group = list->group;
 
+		printf("Group %d (elapsed time: %f):\n", group->idx, group->elapsedTime);
+
 		TaskList* taskList = group->taskList;
 		while (taskList != NULL)
 		{
 			Task* task = taskList->pTask;
 
-			printf("[Task %d] ", task->idx);
+			printf("[Task %d] function: %c, ", task->idx, task->componentSymbol);
 			if (task->status == TASK_STATUS_FINISHED)
 				printf("result: %f, ", task->result);
 			else
@@ -246,10 +226,6 @@ void UI_ProcessCommand(char* cmd)
 	else if (!strcmp(argv[0], "status"))
 	{
 		UI_Status();
-	}
-	else if (!strcmp(argv[0], "summary"))
-	{
-		UI_Summary();
 	}
 	else if (!strcmp(argv[0], "cancel"))
 	{
