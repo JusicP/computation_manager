@@ -137,6 +137,20 @@ void CM_InitServer()
     }
 }
 
+void CM_ShutdownServer()
+{
+    if (g_SockFd == INVALID_SOCKET)
+    {
+        // server is already down
+        return;
+    }
+
+    closesocket(g_SockFd);
+    g_SockFd = INVALID_SOCKET;
+
+    WSACleanup();
+}
+
 // The sequence of send messages mgr <-> worker
 // [Worker] Send hello message
 // [Mgr] Send task to the worker if there is one (task)
@@ -291,6 +305,12 @@ void CM_Run()
 {
     if (!CM_ShouldRun())
     {
+        if (g_bInitialized)
+        {
+            CM_ShutdownServer();
+            g_bInitialized = false;
+        }
+
         CM_SetRunning(false);
         return;
     }
@@ -328,7 +348,7 @@ void CM_Run()
                     // don't receive message from this worker because he's late
                     CM_CloseSocket(task);
 
-                    printf("Task %d cancelled: time limit exceeded\n", task->idx);
+                    //printf("Task %d cancelled: time limit exceeded\n", task->idx);
                 }
             }
 
