@@ -246,7 +246,11 @@ void UI_Run()
 		if (!CM_IsRunning() || g_bGotSigInt)
 		{
 			char cmd[MAX_CMD_LEN];
-			fgets(cmd, MAX_CMD_LEN, stdin);
+			if (fgets(cmd, MAX_CMD_LEN, stdin) == NULL)
+			{
+				// fgets fail on sigint
+				continue;
+			}
 
 			UI_ProcessCommand(cmd);
 
