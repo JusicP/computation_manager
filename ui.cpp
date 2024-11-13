@@ -36,26 +36,42 @@ const char* StatusToString(int status)
 
 void UI_NewComputation(int argc, char** argv)
 {
-	char compSymbol;
+	int groupIdx;
 	if (argc > 1)
 	{
-		compSymbol = argv[1][0];
+		groupIdx = atoi(argv[1]);
 	}
 	else
 	{
-		printf("new usage: new <component symbol> <limit time (optional)>\n");
+		printf("new usage: new <groupIdx> <component symbol> <limit time (optional)>\n");
+		return;
+	}
+
+	char compSymbol;
+	if (argc > 2)
+	{
+		compSymbol = argv[2][0];
+	}
+	else
+	{
+		printf("new usage: new <groupIdx> <component symbol> <limit time (optional)>\n");
 		return;
 	}
 	
 	int limit = 0;
-	if (argc > 2)
+	if (argc > 3)
 	{
-		limit = atoi(argv[2]);
+		limit = atoi(argv[3]);
 	}
 
-	Task* task = CM_NewTask(5, limit, compSymbol);
+	Task* task = CM_NewTask(groupIdx, limit, compSymbol);
+	if (!task)
+	{
+		printf("unknown group idx\n");
+		return;
+	}
 
-	printf("Computation component %c with idx %d added to group TODO: group\n", compSymbol, task->idx);
+	printf("Computation component %c with idx %d added to group %d\n", compSymbol, task->idx, groupIdx);
 }
 
 void UI_NewGroup(int argc, char** argv)
@@ -63,32 +79,41 @@ void UI_NewGroup(int argc, char** argv)
 	int x;
 	if (argc > 1)
 	{
-		x = atoi(argv[2]);
+		x = atoi(argv[1]);
 	}
 	else
 	{
-		printf("group usage: group <x> <limit time (optional)>\n");
+		printf("group usage: group <x> <limit time (optional, 0 for no limit)>\n");
 		return;
 	}
 
 	int limit = 0;
 	if (argc > 2)
 	{
-		limit = atoi(argv[3]);
+		limit = atoi(argv[2]);
 	}
 
-	// TODO: groups
-	printf("New group %d with x = %d\n", 1, x);
+	Group* group = CM_NewGroup(x, limit);
+
+	printf("New group %d with x = %d\n", group->idx, x);
 }
 
 void UI_RunComputating()
 {
 	// set ready to run status for all tasks
-	TaskList* list = CM_GetTasks();
+	GroupList* list = CM_GetGroups();
 	while (list != NULL)
 	{
-		Task* task = list->pTask;
-		task->status = TASK_STATUS_READY_TO_RUN;
+		Group* group = list->group;
+
+		TaskList* taskList = group->taskList;
+		while (taskList != NULL)
+		{
+			Task* task = taskList->pTask;
+			task->status = TASK_STATUS_READY_TO_RUN;
+
+			taskList = taskList->pNext;
+		}
 
 		list = list->pNext;
 	}
@@ -98,37 +123,52 @@ void UI_RunComputating()
 
 void UI_Summary()
 {
-	TaskList* taskList = CM_GetTasks();
-
 	printf("Summary:\n");
-	while (taskList != NULL)
+
+	GroupList* list = CM_GetGroups();
+	while (list != NULL)
 	{
-		Task* task = taskList->pTask;
+		Group* group = list->group;
 
-		printf("[Task %d] result: %f, elapsed time: %d, status: %s\n", task->idx, task->result, task->elapsedTime, StatusToString(task->status));
+		TaskList* taskList = group->taskList;
+		while (taskList != NULL)
+		{
+			Task* task = taskList->pTask;
+			printf("[Task %d] result: %f, elapsed time: %d, status: %s\n", task->idx, task->result, task->elapsedTime, StatusToString(task->status));
 
-		taskList = taskList->pNext;
+			taskList = taskList->pNext;
+		}
+
+		list = list->pNext;
 	}
 }
 
 void UI_Status()
 {
-	TaskList* taskList = CM_GetTasks();
-
 	printf("Computation status for each task:\n");
-	while (taskList != NULL)
+
+	GroupList* list = CM_GetGroups();
+	while (list != NULL)
 	{
-		Task* task = taskList->pTask;
+		Group* group = list->group;
 
-		printf("[Task %d] ", task->idx);
-		if (task->status == TASK_STATUS_FINISHED)
-			printf("result: %f, ", task->result);
-		else
-			printf("result: not defined, ");
+		TaskList* taskList = group->taskList;
+		while (taskList != NULL)
+		{
+			Task* task = taskList->pTask;
 
-		printf("elapsed time: %d, status: %s\n", task->elapsedTime, StatusToString(task->status));
+			printf("[Task %d] ", task->idx);
+			if (task->status == TASK_STATUS_FINISHED)
+				printf("result: %f, ", task->result);
+			else
+				printf("result: not defined, ");
 
-		taskList = taskList->pNext;
+			printf("elapsed time: %d, status: %s\n", task->elapsedTime, StatusToString(task->status));
+
+			taskList = taskList->pNext;
+		}
+
+		list = list->pNext;
 	}
 }
 
@@ -145,14 +185,14 @@ void UI_Cancel(int argc, char** argv)
 		return;
 	}
 
-	int componentIdx;
+	int componentIdx = -1;
 	if (argc > 2 && groupIdx != -1)
 	{
 		componentIdx = atoi(argv[2]);
 	}
 	else
 	{
-		printf("cancel: <group idx (-1 for all groups, component idx will be ignored)> <component idx (-1 for all components in group)>\n");
+		printf("cancel: <group idx (-1 for all groups, component idx is -1)> <component idx (-1 for all components in group)>\n");
 		return;
 	}
 

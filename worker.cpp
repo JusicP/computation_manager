@@ -134,12 +134,17 @@ int Worker_RunClient()
                 break;
             }
         }
+        else if (iResult == 0)
+        {
+            // disconnected
+            break;
+        }
         else if (WSAGetLastError() != WSAEWOULDBLOCK)
         {
             printf("recv failed with: %d\n", WSAGetLastError());
             break;
         }
-    } 
+    }
 
     // cleanup
     closesocket(sockFd);

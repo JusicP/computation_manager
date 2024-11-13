@@ -28,10 +28,9 @@ void PushTask(TaskList*& list, Task* task)
 	current->pNext = NewNode(task);
 }
 
-Task* NewTask(TaskList*& list, int x, int status, int limit, char compSymbol)
+Task* NewTask(TaskList*& list, int status, int limit, char compSymbol)
 {
 	Task* pTask = new Task;
-	pTask->x = x;
 	pTask->status = status;
 	pTask->limit = limit;
 	pTask->idx = g_nTaskIdCounter++;

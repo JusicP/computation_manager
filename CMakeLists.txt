@@ -7,7 +7,7 @@ endif()
 
 project("computation_manager")
 
-add_executable(computation_manager "computation_manager.cpp" "computation_manager.h" "main.cpp" "task.cpp" "task.h" "ui.cpp" "ui.h" "worker.cpp" "worker.h"  "shared.h")
+add_executable(computation_manager "computation_manager.cpp" "computation_manager.h" "main.cpp" "task.cpp" "task.h" "ui.cpp" "ui.h" "worker.cpp" "worker.h"  "shared.h" "group.cpp" "group.h")
 
 target_link_libraries(computation_manager wsock32 ws2_32)
 

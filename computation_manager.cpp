@@ -7,7 +7,7 @@
 #include <Windows.h>
 #endif
 
-TaskList* g_pTasks;
+GroupList* g_pGroups;
 bool g_bRunning; // is the server running
 bool g_bInitialized; // is the server initialized
 SOCKET g_SockFd;
@@ -17,9 +17,10 @@ SOCKET g_ClientSockets[MAX_CONNECTIONS];
 
 void CM_Init()
 {
-	g_pTasks = NULL;
+    g_pGroups = NULL;
     g_bRunning = false;
     g_bInitialized = false;
+    g_SockFd = INVALID_SOCKET;
 
     for (int i = 0; i < MAX_CONNECTIONS; i++)
     {
@@ -29,12 +30,24 @@ void CM_Init()
 
 void CM_Shutdown()
 {
-	CleanUpTaskList(g_pTasks);
+    CleanUpGroupList(g_pGroups);
 }
 
-Task* CM_NewTask(int x, int limit, char compSymbol)
+Task* CM_NewTask(int groupIdx, int limit, char compSymbol)
 {
-	return NewTask(g_pTasks, x, TASK_STATUS_READY_TO_RUN, limit, compSymbol);
+    // find group and add to task list
+    Group* group = GetGroupByIdx(g_pGroups, groupIdx);
+    if (!group)
+    {
+        return NULL;
+    }
+
+	return NewTask(group->taskList, TASK_STATUS_READY_TO_RUN, limit, compSymbol);
+}
+
+Group* CM_NewGroup(int x, int limit)
+{
+    return NewGroup(g_pGroups, x, limit);
 }
 
 void CM_StartProcess(Task* task)
@@ -180,7 +193,7 @@ void CM_RunServer()
         if (n > 0) // got message
         {
             // if no task by socket, then we got probably inital hello message
-            Task* task = GetTaskBySocket(g_pTasks, socket);
+            Task* task = GetTaskBySocket(g_pGroups, socket);
             if (!task)
             {
                 // read hello msg and find free task, assign socket to task
@@ -190,13 +203,14 @@ void CM_RunServer()
                     continue;
                 }
 
-                task = FindFreeTask(g_pTasks);
+                int x;
+                task = FindFreeTask(g_pGroups, x);
                 ASSERT(task); // could be zero if run the program manually with the worker argument
                 task->sockFd = socket;
 
                 // send task message
                 TaskMsg msg;
-                msg.x = task->x;
+                msg.x = x;
                 msg.componentSymbol = task->componentSymbol;
                 if (send(socket, (const char*)&msg, sizeof(msg), 0) == -1)
                 {
@@ -215,10 +229,13 @@ void CM_RunServer()
             // read calculation results
             task->result = *(double*)buf;
             task->status = TASK_STATUS_FINISHED;
+
+            CM_CloseSocket(task);
+            g_ClientSockets[i] = INVALID_SOCKET;
         }
         else if (n == 0 || WSAGetLastError() != WSAEWOULDBLOCK) // client disconnected or we got socket error
         {
-            Task* task = GetTaskBySocket(g_pTasks, socket);
+            Task* task = GetTaskBySocket(g_pGroups, socket);
             if (task)
             {
                 CM_CloseSocket(task);
@@ -242,17 +259,27 @@ void CM_RunServer()
 bool CM_ShouldRun()
 {
     // CM should run when some task is ready to run or calculation component is active (calculating)
-    TaskList* list = g_pTasks;
+    GroupList* list = g_pGroups;
     while (list != NULL)
     {
-        Task* task = list->pTask;
-        ASSERT(task);
-        if (task->status == TASK_STATUS_READY_TO_RUN ||
-            task->status == TASK_STATUS_WAITING_FOR_HELLO_MSG ||
-            task->status == TASK_STATUS_CALCULATING)
-        {
-            return true;
-        }
+        Group* group = list->group;
+        ASSERT(group);
+
+		TaskList* taskList = group->taskList;
+		while (taskList != NULL)
+		{
+			Task* task = taskList->pTask;
+			ASSERT(task);
+
+            if (task->status == TASK_STATUS_READY_TO_RUN ||
+                task->status == TASK_STATUS_WAITING_FOR_HELLO_MSG ||
+                task->status == TASK_STATUS_CALCULATING)
+            {
+                return true;
+            }
+
+            taskList = taskList->pNext;
+		}
 
         list = list->pNext;
     }
@@ -268,34 +295,44 @@ void CM_Run()
         return;
     }
 
-    TaskList* list = g_pTasks;
-
     // process task status
+    GroupList* list = g_pGroups;
     while (list != NULL)
     {
-        Task* task = list->pTask;
-        ASSERT(task);
+        Group* group = list->group;
+        ASSERT(group);
 
-        if (task->status == TASK_STATUS_READY_TO_RUN)
+        TaskList* taskList = group->taskList;
+        while (taskList != NULL)
         {
-            CM_StartProcess(task);
-            task->status = TASK_STATUS_WAITING_FOR_HELLO_MSG;
-        }
-        else if (task->status == TASK_STATUS_CALCULATING)
-        {
-            // update task time counter
-            if (task->elapsedTime == 0)
+            Task* task = taskList->pTask;
+            ASSERT(task);
+
+            if (task->status == TASK_STATUS_READY_TO_RUN)
             {
-                task->elapsedTime = 0; // TODO: ....
+                CM_StartProcess(task);
+                task->status = TASK_STATUS_WAITING_FOR_HELLO_MSG;
+            }
+            else if (task->status == TASK_STATUS_CALCULATING)
+            {
+                // update task time counter
+                if (task->elapsedTime == 0)
+                {
+                    task->elapsedTime = 0; // TODO: ....
+                }
+
+                if (task->limit > 0 && task->limit <= task->elapsedTime)
+                {
+                    task->status = TASK_STATUS_LIMIT_EXCEEDED;
+
+                    // don't receive message from this worker because he's late
+                    CM_CloseSocket(task);
+
+                    printf("Task %d cancelled: time limit exceeded\n", task->idx);
+                }
             }
 
-            if (task->limit > 0 && task->limit <= task->elapsedTime)
-            {
-                task->status = TASK_STATUS_LIMIT_EXCEEDED;
-
-                // don't receive message from this worker because he's late
-                CM_CloseSocket(task);
-            }
+            taskList = taskList->pNext;
         }
 
         list = list->pNext;
@@ -306,21 +343,31 @@ void CM_Run()
 
 void CM_Cancel(int groupIdx, int componentIdx)
 {
-    // TODO: groupIdx
-
-    TaskList* list = g_pTasks;
+    GroupList* list = g_pGroups;
     while (list != NULL)
     {
-        Task* task = list->pTask;
-        ASSERT(task);
+        Group* group = list->group;
+        ASSERT(group);
 
-        // set canceled status for running task
-        if ((componentIdx == -1 || task->idx == componentIdx) &&
-            task->status == TASK_STATUS_CALCULATING &&
-            task->status == TASK_STATUS_WAITING_FOR_HELLO_MSG)
+        if (groupIdx == -1 || group->idx == groupIdx)
         {
-            CM_CloseSocket(task);
-            task->status = TASK_STATUS_CANCELED_BY_USER;
+            TaskList* taskList = group->taskList;
+            while (taskList != NULL)
+            {
+                Task* task = taskList->pTask;
+                ASSERT(task);
+
+                // set canceled status for running task
+                if ((componentIdx == -1 || task->idx == componentIdx) &&
+                    task->status == TASK_STATUS_CALCULATING &&
+                    task->status == TASK_STATUS_WAITING_FOR_HELLO_MSG)
+                {
+                    CM_CloseSocket(task);
+                    task->status = TASK_STATUS_CANCELED_BY_USER;
+                }
+
+                taskList = taskList->pNext;
+            }
         }
 
         list = list->pNext;
@@ -337,7 +384,7 @@ bool CM_IsRunning()
 	return g_bRunning;
 }
 
-TaskList* CM_GetTasks()
+GroupList* CM_GetGroups()
 {
-	return g_pTasks;
+    return g_pGroups;
 }

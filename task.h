@@ -3,7 +3,6 @@
 struct Task
 {
 	int idx;
-	int x; // function argument
 	char componentSymbol; // component symbol - defines calculations
 	int status; // task status
 	int limit; // maximum amount of time can be allocated to calculations
@@ -38,7 +37,7 @@ struct TaskList
 };
 
 TaskList* NewNode(Task* task);
-Task* NewTask(TaskList*& list, int x, int status, int limit, char compSymbol);
+Task* NewTask(TaskList*& list, int status, int limit, char compSymbol);
 void CleanUpTaskList(TaskList* head);
 Task* GetTaskBySocket(TaskList* head, int sockFd);
 Task* FindFreeTask(TaskList* head);
