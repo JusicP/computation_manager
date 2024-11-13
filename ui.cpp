@@ -111,6 +111,7 @@ void UI_RunComputating()
 		{
 			Task* task = taskList->pTask;
 			task->status = TASK_STATUS_READY_TO_RUN;
+			task->startTime = 0;
 
 			taskList = taskList->pNext;
 		}
