@@ -105,14 +105,16 @@ void UI_RunComputating()
 	while (list != NULL)
 	{
 		Group* group = list->group;
-		group->startTime = 0;
+		group->elapsedTime = 0.0;
 
 		TaskList* taskList = group->taskList;
 		while (taskList != NULL)
 		{
 			Task* task = taskList->pTask;
 			task->status = TASK_STATUS_READY_TO_RUN;
-			task->startTime = 0;
+			task->startTime = 0.0;
+			task->elapsedTime = 0.0;
+			task->secondChance = false;
 
 			taskList = taskList->pNext;
 		}
@@ -256,7 +258,7 @@ void UI_Run()
 	// read user input in non-blocking way and process it
 	// do IPC using TCP/IP sockets
 
-	printf("Computation manager. Available commands: group, new, run, cancel, summary, status\n");
+	printf("Computation manager. Available commands: group, new, run, cancel, status\n");
 
 	while (true)
 	{

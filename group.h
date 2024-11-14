@@ -7,7 +7,6 @@ struct Group
 	double limit;
 	struct TaskList* taskList;
 
-	double startTime;
 	double elapsedTime;
 };
 

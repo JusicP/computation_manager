@@ -3,6 +3,7 @@
 
 #include <math.h>
 #include <cstdio>
+#include <time.h>
 
 #ifdef WIN32
 #include <Windows.h>
@@ -73,7 +74,7 @@ int Worker_RunClient()
 	}
 
     // change the socket into non-blocking state
-    u_long iMode = 1;
+    u_long iMode = 0;
     if (ioctlsocket(sockFd, FIONBIO, &iMode) == SOCKET_ERROR)
     {
         printf("ioctlsocket failed with error: %d\n", WSAGetLastError());
@@ -86,7 +87,7 @@ int Worker_RunClient()
     while (true)
     {
         iResult = connect(sockFd, (sockaddr*)&servAddr, sizeof(servAddr));
-        if (iResult != SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
+        if (iResult == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
         {
             printf("connect failed with error: %d\n", WSAGetLastError());
             closesocket(sockFd);
@@ -118,8 +119,9 @@ int Worker_RunClient()
         iResult = recv(sockFd, recvBuf, recvBufLen, 0);
         if (iResult > 0)
         {
-            TaskMsg* msg = (TaskMsg*)recvBuf;
+            double startTime = clock();
 
+            TaskMsg* msg = (TaskMsg*)recvBuf;
             bool failed;
             double result = ProcessMsg(msg, failed);
             if (failed)
@@ -127,10 +129,18 @@ int Worker_RunClient()
                 break;
             }
 
+            double elapsedTime = (double)(clock() - startTime) / CLOCKS_PER_SEC;
+
+            ResultMsg resultMsg;
+            resultMsg.result = result;
+            resultMsg.elapsedTime = elapsedTime;
+
             // send result
-            if (send(sockFd, (const char*)&result, sizeof(result), 0) != sizeof(result))
+            if (send(sockFd, (const char*)&resultMsg, sizeof(resultMsg), 0) != sizeof(resultMsg))
             {
+#ifdef _DEBUG
                 printf("send failed with: %d\n", WSAGetLastError());
+#endif
                 break;
             }
         }
@@ -141,7 +151,9 @@ int Worker_RunClient()
         }
         else if (WSAGetLastError() != WSAEWOULDBLOCK)
         {
+#ifdef _DEBUG
             printf("recv failed with: %d\n", WSAGetLastError());
+#endif
             break;
         }
     }

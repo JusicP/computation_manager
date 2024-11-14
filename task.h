@@ -12,6 +12,9 @@ struct Task
 	double elapsedTime;
 	double result;
 
+	bool secondChance;
+	double clientElapsedTime;
+
 	// connection info
 	int sockFd;
 };

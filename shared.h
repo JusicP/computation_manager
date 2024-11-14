@@ -14,3 +14,9 @@ struct TaskMsg
     int x;
     char componentSymbol;
 };
+
+struct ResultMsg
+{
+    double result;
+    double elapsedTime;
+};

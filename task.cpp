@@ -35,8 +35,10 @@ Task* NewTask(TaskList*& list, int status, double limit, char compSymbol)
 	pTask->limit = limit;
 	pTask->idx = g_nTaskIdCounter++;
 	pTask->componentSymbol = compSymbol;
-	pTask->elapsedTime = 0;
-	pTask->startTime = 0;
+	pTask->elapsedTime = 0.0;
+	pTask->startTime = 0.0;
+	pTask->clientElapsedTime = -1.0;
+	pTask->secondChance = false;
 
 	PushTask(list, pTask);
 

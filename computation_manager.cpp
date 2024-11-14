@@ -94,8 +94,11 @@ void CM_StartProcess(Task* task)
 
 void CM_CloseSocket(Task* task)
 {
-    closesocket(task->sockFd);
-    task->sockFd = INVALID_SOCKET;
+    if (task->sockFd != INVALID_SOCKET)
+    {
+        closesocket(task->sockFd);
+        task->sockFd = INVALID_SOCKET;
+    }
 }
 
 void CM_InitServer()
@@ -149,6 +152,14 @@ void CM_ShutdownServer()
     g_SockFd = INVALID_SOCKET;
 
     WSACleanup();
+}
+
+void CM_FinishTask(Task* task)
+{
+    task->status = TASK_STATUS_FINISHED;
+    task->elapsedTime = task->clientElapsedTime;
+
+    printf("Task %d finished with result: %f\n", task->idx, task->result);
 }
 
 // The sequence of send messages mgr <-> worker
@@ -232,6 +243,7 @@ void CM_RunServer()
                     CM_CloseSocket(task);
                     g_ClientSockets[i] = INVALID_SOCKET;
                     task->status = TASK_STATUS_ERROR;
+                    printf("Task %d cancelled: got error\n", task->idx);
                     continue;
                 }
 
@@ -241,8 +253,14 @@ void CM_RunServer()
             }
 
             // read calculation results
-            task->result = *(double*)buf;
-            task->status = TASK_STATUS_FINISHED;
+            ResultMsg resultMsg = *(ResultMsg*)buf;
+            task->result = resultMsg.result;
+            task->clientElapsedTime = resultMsg.elapsedTime;
+
+            if (!task->secondChance)
+            {
+                CM_FinishTask(task);
+            }
 
             CM_CloseSocket(task);
             g_ClientSockets[i] = INVALID_SOCKET;
@@ -258,6 +276,7 @@ void CM_RunServer()
                 {
                     // set error status for worker from which a message is expected
                     task->status = TASK_STATUS_ERROR;
+                    printf("Task %d cancelled: got error\n", task->idx);
                 }
             }
             else
@@ -322,8 +341,8 @@ void CM_Run()
         Group* group = list->group;
         ASSERT(group);
 
-        bool someTaskAreRunning = false;
-
+        double maxElapsedTime = 0.0;
+        bool secondChance = false;
         TaskList* taskList = group->taskList;
         while (taskList != NULL)
         {
@@ -347,30 +366,42 @@ void CM_Run()
 
                 if (task->limit > 0 && task->limit <= task->elapsedTime)
                 {
-                    task->status = TASK_STATUS_LIMIT_EXCEEDED;
+                    // Since there may be interruptions for user input, the task execution time is calculated incorrectly.
+                    // Then, give the worker a second chance. 
+                    // If there was i/o, it makes sense to check whether the result has arrived.
+                    // Result contains client-side time of task execution, which can be used to check timeout
+                    if (!task->secondChance)
+                    {
+                        task->secondChance = true;
+                        secondChance = true;
+                    }
+                    else if (task->clientElapsedTime != -1.0 && task->limit > task->clientElapsedTime)
+                    {
+                        CM_FinishTask(task);
+                    }
+                    else
+                    {
+                        task->status = TASK_STATUS_LIMIT_EXCEEDED;
 
-                    // don't receive message from this worker because he's late
-                    CM_CloseSocket(task);
+                        // don't receive message from this worker because he's late
+                        CM_CloseSocket(task);
 
-                    //printf("Task %d cancelled: time limit exceeded\n", task->idx);
+                        printf("Task %d cancelled: time limit exceeded\n", task->idx);
+                    }
                 }
-                else
+
+                if (maxElapsedTime < task->elapsedTime)
                 {
-                    someTaskAreRunning = true;
+                    maxElapsedTime = task->elapsedTime;
                 }
             }
             taskList = taskList->pNext;
         }
 
-        // update group time counter
-        if (someTaskAreRunning)
+        // check limit for group
+        if (maxElapsedTime > 0.0 && !secondChance)
         {
-            if (group->startTime == 0)
-            {
-                group->startTime = clock();
-            }
-
-            group->elapsedTime = (double)(clock() - group->startTime) / CLOCKS_PER_SEC;
+            group->elapsedTime = maxElapsedTime;
 
             if (group->limit > 0 && group->limit <= group->elapsedTime)
             {
@@ -381,10 +412,13 @@ void CM_Run()
                     Task* task = taskList->pTask;
                     ASSERT(task);
 
-                    if (task->status == TASK_STATUS_CALCULATING)
+                    if (task->status == TASK_STATUS_CALCULATING ||
+                        task->status == TASK_STATUS_WAITING_FOR_HELLO_MSG)
                     {
                         task->status = TASK_STATUS_LIMIT_EXCEEDED;
                         CM_CloseSocket(task);
+
+                        printf("Task %d cancelled: global group %d time limit exceeded\n", task->idx, group->idx);
                     }
                     taskList = taskList->pNext;
                 }
