@@ -5,6 +5,7 @@
 
 void CM_Init();
 void CM_Shutdown();
+void CM_Reset();
 
 Group* CM_NewGroup(int x, double limit);
 Task* CM_NewTask(int groupIdx, double limit, char compSymbol);

@@ -101,26 +101,7 @@ void UI_NewGroup(int argc, char** argv)
 void UI_RunComputating()
 {
 	// set ready to run status for all tasks
-	GroupList* list = CM_GetGroups();
-	while (list != NULL)
-	{
-		Group* group = list->group;
-		group->elapsedTime = 0.0;
-
-		TaskList* taskList = group->taskList;
-		while (taskList != NULL)
-		{
-			Task* task = taskList->pTask;
-			task->status = TASK_STATUS_READY_TO_RUN;
-			task->startTime = 0.0;
-			task->elapsedTime = 0.0;
-			task->secondChance = false;
-
-			taskList = taskList->pNext;
-		}
-
-		list = list->pNext;
-	}
+	CM_Reset();
 
 	CM_SetRunning(true);
 }
