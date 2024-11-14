@@ -5,7 +5,7 @@
 #include <signal.h>
 #include <string.h>
 
-volatile bool g_bGotSigInt = false; // if sigint is received, then manager can process user input
+volatile bool g_bGotSigInt = false; // if sigint is received, then ui can process user input
 void Signal_Int(int)
 {
 	g_bGotSigInt = true;
