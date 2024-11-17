@@ -74,7 +74,7 @@ int Worker_RunClient()
 	}
 
     // change the socket into non-blocking state
-    u_long iMode = 0;
+    u_long iMode = 1;
     if (ioctlsocket(sockFd, FIONBIO, &iMode) == SOCKET_ERROR)
     {
         printf("ioctlsocket failed with error: %d\n", WSAGetLastError());
@@ -83,39 +83,55 @@ int Worker_RunClient()
         return 1;
     }
 
-	// Connect to server.
-    while (true)
-    {
-        iResult = connect(sockFd, (sockaddr*)&servAddr, sizeof(servAddr));
-        if (iResult == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
-        {
-            printf("connect failed with error: %d\n", WSAGetLastError());
-            closesocket(sockFd);
-            WSACleanup();
-            return 1;
-        }
-        else
-        {
-            break;
-        }
-    }
-    
-    // send hello message with task request
-    const char* helloMsg = "HELLO";
-    iResult = send(sockFd, helloMsg, strlen(helloMsg) + 1, 0);
-    if (iResult == SOCKET_ERROR)
-    {
-        printf("send failed with error: %d\n", WSAGetLastError());
-        closesocket(sockFd);
-        WSACleanup();
-        return 1;
-    }
-
     // Receive until the peer closes the connection or task finishes
     const int recvBufLen = 128;
     char recvBuf[recvBufLen];
+    bool isConn = false;
+    bool sentHelloMsg = false;
     while (true)
     {
+        if (!isConn)
+        {
+            // Connect to server.
+            iResult = connect(sockFd, (sockaddr*)&servAddr, sizeof(servAddr));
+            if (iResult == SOCKET_ERROR)
+            {
+                int error = WSAGetLastError();
+                if (error == WSAEWOULDBLOCK || error == WSAEALREADY)
+                {
+                    continue;
+                }
+                else if (error == WSAEISCONN)
+                {
+                    isConn = true;
+                    continue;
+                }
+
+                printf("connect failed with error: %d\n", error);
+                closesocket(sockFd);
+                WSACleanup();
+                return 1;
+            }
+
+            isConn = true;
+        }
+
+        if (!sentHelloMsg)
+        {
+            // send hello message with task request
+            const char* helloMsg = "HELLO";
+            iResult = send(sockFd, helloMsg, strlen(helloMsg) + 1, 0);
+            if (iResult == SOCKET_ERROR)
+            {
+                printf("send failed with error: %d\n", WSAGetLastError());
+                closesocket(sockFd);
+                WSACleanup();
+                return 1;
+            }
+
+            sentHelloMsg = true;
+        }
+
         iResult = recv(sockFd, recvBuf, recvBufLen, 0);
         if (iResult > 0)
         {
