@@ -100,6 +100,9 @@ void UI_NewGroup(int argc, char** argv)
 
 void UI_RunComputating()
 {
+	if (CM_IsRunning())
+		return;
+
 	// set ready to run status for all tasks
 	CM_Reset();
 
