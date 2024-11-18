@@ -254,7 +254,14 @@ void CM_RunServer()
 
                 int x;
                 task = FindFreeTask(g_pGroups, x);
-                ASSERT(task); // could be zero if run the program manually with the worker argument
+                // could be zero if run the program manually with the worker argument
+                if (!task)
+                {
+                    closesocket(g_ClientSockets[i]);
+                    g_ClientSockets[i] = INVALID_SOCKET;
+                    continue;
+                }
+
                 task->sockFd = socket;
 
                 // send task message
@@ -473,8 +480,8 @@ void CM_Cancel(int groupIdx, int componentIdx)
 
                 // set canceled status for running task
                 if ((componentIdx == -1 || task->idx == componentIdx) &&
-                    task->status == TASK_STATUS_CALCULATING &&
-                    task->status == TASK_STATUS_WAITING_FOR_HELLO_MSG)
+                    (task->status == TASK_STATUS_CALCULATING ||
+                    task->status == TASK_STATUS_WAITING_FOR_HELLO_MSG))
                 {
                     CM_CloseSocket(task);
                     task->status = TASK_STATUS_CANCELED_BY_USER;
